@@ -1,3 +1,20 @@
+##    Will Huffman
+##    ME 555.03
+##    Final Project
+##    April 24, 2016
+##
+##    breakout_eye.py
+##
+##    This program runs a clone of the classic breakout game which takes
+##    input from a localhost data stream provided by Pupil Labs software.
+##    On-screen coordinates of gaze are extracted and input as the main
+##    controller for the paddle.  Sections that required editing should 
+##    be commented.
+##
+##    github repository for project:
+##    <https://github.com/willhuffman/breakout_eye/>
+
+##    BEGIN ORIGINAL HEADER OF SIMPLE BREAKOUT
 ##    This file is part of Simple Breakout.
 ##
 ##    Simple Breakout is free software: you can redistribute it and/or modify
@@ -12,30 +29,30 @@
 ##
 ##    You should have received a copy of the GNU General Public License
 ##    along with Simple Breakout.  If not, see <http://www.gnu.org/licenses/>.
+##    END ORIGINAL HEADER OF SIMPLE BREAKOUT
+
+# import necessary modules
 from tkFileDialog import askopenfilename
 try: import cPickle as pickle
 except ImportError: import pickle
+# added modules for eye control
 from pygame.locals import *
-import pygame, random, sys, ezmenu, level_editor, zmq, socket, sys, csv, select
+import pygame, random, sys, ezmenu, level_editor, zmq, socket, sys, csv, select, json
 
-## added for eye tracker info
-
-#network setup
-port = "8775"
+# network setup for Pupil Labs data stream
+port = "5000"
 context = zmq.Context()
-zocket = context.socket(zmq.SUB)
-zocket.connect("tcp://127.0.0.1:"+port)
+socket = context.socket(zmq.SUB)
+socket.connect("tcp://127.0.0.1:"+port)
 
-#filter by messages by stating string 'STRING'. '' receives all messages
-zocket.setsockopt(zmq.SUBSCRIBE, '')
+# filter by messages by stating string 'STRING'. '' receives all messages
+socket.setsockopt(zmq.SUBSCRIBE, 'gaze_positions')
 
 delim = ';'
 times=[]
 
-#surface_name = "Task Screen"
-surface_name = "desk screen tester"
-
-
+# larry is the name of the computer (not a person...)
+pos_name = 'realtime gaze on larry' 
 
 class Block(pygame.sprite.Sprite):
     """ A breakout block """
@@ -178,7 +195,7 @@ class Paddle(pygame.sprite.Sprite):
         if not self.paused:
             if self.rect.colliderect(self.ball.rect):
                 self.ball.y  = self.y-self.ball.rect.height
-                self.ball.dy = -random.randint(1,7)
+                self.ball.dy = -random.randint(5,10)
                 self.ball.dx = random.randint(-7,7)
 
             self.rect.x = self.x
@@ -435,31 +452,27 @@ def main(screen, level=None, ai=False):
                 lastscreen(screen, ball.points, deaths)
                 return
 
-        #if not ai: paddle.x = pygame.mouse.get_pos()[0]-paddle.rect.width/2
-
         if not ai:
+            ## MAIN CONTROL INPUT HERE
+            # Pupil labs message retrieval 
             try:
-                msg = zocket.recv()
-                items = msg.split("\n")
-                msg_type = items.pop(0)
-                items = dict([i.split(':') for i in items[:-1] ])
-                if msg_type == 'Gaze':
-                    print 'success'
-                    try:
-                        screen_tuple = items['realtime gaze on '+surface_name]
-                        screen_tuple = screen_tuple.partition(',')
-                        screen_x = screen_tuple[0]
-                        screen_x = screen_x[1:]
-                        paddle.x = float(screen_x)*640.0-25.0
-                    except KeyError:
-                        pass
+                topic,msg =  socket.recv_multipart()
+                msg = json.loads(msg)
+                print msg
+                if len(msg) == 1:
+                    msg_dict=msg[0]
+                    if pos_name in msg_dict:
+                        try:
+                            # extract screen coordinate and transform to game coordinates
+                            screen_coord = msg_dict.get(pos_name)
+                            screen_x = screen_coord[0]
+                            paddle.x = float(screen_x)*640.0-25.0
+                        except KeyError:
+                            pass
             except KeyError:
                 pass
-
-                #else: paddle.x = ball.x-ball.rect.width/2-paddle.rect.width/2
         
         else: paddle.x = ball.x-ball.rect.width/2-paddle.rect.width/2
-        #print paddle.x
 
         points = font.render('Points: '+str(ball.points), True, (255,255,255))
         pointsrect = points.get_rect()
